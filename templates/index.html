@@ -1,1340 +1,322 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MINE GUARD</title>
-
-<style>
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
-body {
-    font-family: Arial, Helvetica, sans-serif;
-    background: #06131c;
-    color: #e9f7f1;
-    min-height: 100vh;
-}
-
-.dashboard {
-    width: 100%;
-    max-width: 1500px;
-    margin: auto;
-    padding: 18px;
-}
-
-/* HEADER */
-
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 20px 20px;
-    border-bottom: 1px solid #17333d;
-    margin-bottom: 16px;
-}
-
-.logo-area {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.logo {
-    width: 58px;
-    height: 58px;
-    border: 2px solid #25e78b;
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 30px;
-}
-
-.title {
-    font-size: 30px;
-    font-weight: 800;
-    letter-spacing: 1px;
-}
-
-.title span {
-    color: #27ed8c;
-}
-
-.subtitle {
-    color: #91aaa8;
-    margin-top: 5px;
-    font-size: 14px;
-}
-
-.datetime {
-    text-align: right;
-    color: #a9c0bf;
-    font-size: 14px;
-}
-
-.datetime strong {
-    display: block;
-    color: white;
-    font-size: 17px;
-    margin-bottom: 5px;
-}
-
-/* TOP STATUS */
-
-.status-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 14px;
-}
-
-.status-card {
-    background: linear-gradient(145deg, #0b242b, #081b23);
-    border: 1px solid #17434a;
-    border-radius: 12px;
-    padding: 18px;
-    min-height: 115px;
-}
-
-.status-card h3 {
-    color: #9db8b5;
-    font-size: 13px;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-}
-
-.status-value {
-    color: #2df18c;
-    font-size: 26px;
-    font-weight: bold;
-}
-
-.status-small {
-    color: #829b99;
-    font-size: 12px;
-    margin-top: 5px;
-}
-
-/* MAIN GRID */
-
-.main-grid {
-    display: grid;
-    grid-template-columns: 1.25fr 1fr;
-    gap: 14px;
-}
-
-.card {
-    background: #081a23;
-    border: 1px solid #17404a;
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-/* MAP */
-
-.map-card {
-    min-height: 535px;
-}
-
-.card-title {
-    padding: 15px 18px;
-    font-size: 18px;
-    font-weight: bold;
-}
-
-.card-subtitle {
-    padding: 0 18px 12px;
-    color: #829d9b;
-    font-size: 12px;
-}
-
-.map {
-    height: 455px;
-    position: relative;
-    overflow: hidden;
-    background:
-        radial-gradient(circle at 25% 35%, #274936 0 2%, transparent 2.5%),
-        radial-gradient(circle at 70% 65%, #314d39 0 2%, transparent 2.5%),
-        linear-gradient(135deg, #183a32, #273c30 35%, #142921 70%, #10211d);
-}
-
-/* map texture */
-
-.map::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    opacity: 0.35;
-    background-image:
-        repeating-linear-gradient(
-            25deg,
-            transparent 0px,
-            transparent 18px,
-            #52715c 19px,
-            transparent 20px
-        ),
-        repeating-linear-gradient(
-            -25deg,
-            transparent 0px,
-            transparent 25px,
-            #355844 26px,
-            transparent 27px
-        );
-}
-
-.mine-area {
-    position: absolute;
-    left: 25%;
-    top: 30%;
-    width: 55%;
-    height: 45%;
-    background: #242b27;
-    clip-path: polygon(
-        12% 10%, 40% 0%, 78% 12%, 100% 38%,
-        83% 72%, 58% 100%, 20% 86%, 0% 48%
-    );
-    opacity: .9;
-}
-
-.mine-line {
-    position: absolute;
-    height: 2px;
-    background: #52685c;
-    transform-origin: left center;
-    opacity: .8;
-}
-
-.line1 {
-    width: 70%;
-    left: 12%;
-    top: 45%;
-    transform: rotate(25deg);
-}
-
-.line2 {
-    width: 55%;
-    left: 20%;
-    top: 65%;
-    transform: rotate(-20deg);
-}
-
-/* NODES */
-
-.node {
-    position: absolute;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: #25ee8a;
-    border: 3px solid #0b271e;
-    box-shadow: 0 0 10px #25ee8a;
-    z-index: 4;
-}
-
-.node::before,
-.node::after {
-    content: "";
-    position: absolute;
-    border: 2px solid #25ee8a;
-    border-radius: 50%;
-    inset: -10px;
-    animation: pulse 2s infinite;
-}
-
-.node::after {
-    inset: -20px;
-    animation-delay: .7s;
-}
-
-@keyframes pulse {
-    0% {
-        transform: scale(.7);
-        opacity: .8;
-    }
-    100% {
-        transform: scale(1.35);
-        opacity: 0;
-    }
-}
-
-.node1 {
-    left: 37%;
-    top: 60%;
-}
-
-.node2 {
-    left: 62%;
-    top: 30%;
-}
-
-.node-label {
-    position: absolute;
-    top: 30px;
-    left: -7px;
-    color: white;
-    font-weight: bold;
-    font-size: 13px;
-}
-
-.mesh {
-    position: absolute;
-    left: 39%;
-    top: 61%;
-    width: 27%;
-    border-top: 2px dashed #d7e7df;
-    transform: rotate(-35deg);
-    z-index: 2;
-}
-
-.map-info {
-    position: absolute;
-    left: 15px;
-    bottom: 15px;
-    background: rgba(4, 18, 22, .85);
-    padding: 12px;
-    border-radius: 8px;
-    font-size: 11px;
-    z-index: 5;
-    color: #b6cbc7;
-}
-
-/* NODE PANELS */
-
-.nodes {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.node-card {
-    padding: 16px;
-    min-height: 255px;
-}
-
-.node-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 14px;
-}
-
-.node-name {
-    font-size: 20px;
-    font-weight: bold;
-}
-
-.online {
-    color: #29ee8c;
-    border: 1px solid #168451;
-    background: #09281e;
-    padding: 7px 12px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.offline {
-    color: #ff5d68;
-    border: 1px solid #8d3039;
-    background: #291116;
-    padding: 7px 12px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.node-content {
-    display: grid;
-    grid-template-columns: 120px 1fr;
-    gap: 14px;
-}
-
-/* animated sensor illustration */
-
-.sensor-image {
-    height: 150px;
-    position: relative;
-    background: #071820;
-    border-radius: 9px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-
-.sensor-tower {
-    width: 8px;
-    height: 75px;
-    background: #aab8b4;
-    position: relative;
-    margin-top: 35px;
-}
-
-.sensor-box {
-    position: absolute;
-    width: 42px;
-    height: 27px;
-    background: #bec9c5;
-    top: 20px;
-    left: -17px;
-    border-radius: 3px;
-}
-
-.sensor-panel {
-    position: absolute;
-    width: 48px;
-    height: 30px;
-    background: #11628a;
-    border: 2px solid #9bb4bb;
-    top: -18px;
-    left: -20px;
-    transform: skew(-15deg);
-}
-
-.sensor-ground {
-    position: absolute;
-    bottom: 0;
-    width: 100%;
-    height: 24px;
-    background: #16382b;
-}
-
-.sensor-signal {
-    position: absolute;
-    top: 18px;
-    right: 15px;
-    font-size: 23px;
-    color: #29ee8c;
-    animation: signal 1.5s infinite;
-}
-
-@keyframes signal {
-    0%, 100% {
-        opacity: .3;
-        transform: scale(.9);
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.1);
-    }
-}
-
-.sensor-signal.off {
-    color: #ff4d5c;
-    animation: none;
-}
-
-/* SENSOR VALUES */
-
-.readings {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.reading {
-    display: grid;
-    grid-template-columns: 1fr 75px 70px;
-    align-items: center;
-    border-bottom: 1px solid #18323a;
-    padding: 7px 0;
-    font-size: 12px;
-}
-
-.reading strong {
-    color: white;
-    text-align: right;
-}
-
-.normal {
-    color: #28ed8a;
-    background: #0b2b20;
-    border-radius: 5px;
-    padding: 4px;
-    text-align: center;
-    font-size: 10px;
-}
-
-.medium {
-    color: #ffd34d;
-    background: #352c0b;
-    border-radius: 5px;
-    padding: 4px;
-    text-align: center;
-    font-size: 10px;
-}
-
-.high {
-    color: #ff9b42;
-    background: #3b220c;
-    border-radius: 5px;
-    padding: 4px;
-    text-align: center;
-    font-size: 10px;
-}
-
-.critical {
-    color: #ff5864;
-    background: #3b1117;
-    border-radius: 5px;
-    padding: 4px;
-    text-align: center;
-    font-size: 10px;
-}
-
-/* BOTTOM */
-
-.bottom-grid {
-    display: grid;
-    grid-template-columns: 1.1fr 1fr;
-    gap: 14px;
-    margin-top: 14px;
-}
-
-.chart {
-    padding: 18px;
-    min-height: 270px;
-}
-
-.chart-area {
-    height: 170px;
-    margin-top: 15px;
-    position: relative;
-    border-left: 1px solid #31505a;
-    border-bottom: 1px solid #31505a;
-    background:
-        repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 32px,
-            #173039 33px
-        );
-}
-
-.chart-line {
-    position: absolute;
-    height: 2px;
-    width: 75%;
-    left: 8%;
-    background: #28ee8b;
-    transform: rotate(-4deg);
-    box-shadow: 0 0 5px #28ee8b;
-}
-
-.chart-line.two {
-    background: #23a7ff;
-    top: 65px;
-    transform: rotate(3deg);
-}
-
-.chart-line.three {
-    background: #ffd21f;
-    top: 105px;
-    transform: rotate(-2deg);
-}
-
-.legend {
-    display: flex;
-    gap: 18px;
-    margin-top: 14px;
-    color: #94aaa8;
-    font-size: 10px;
-}
-
-/* AI */
-
-.ai {
-    padding: 18px;
-    min-height: 270px;
-}
-
-.ai-content {
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    height: 210px;
-}
-
-.risk-circle {
-    width: 125px;
-    height: 125px;
-    border-radius: 50%;
-    border: 12px solid #19a96a;
-    border-top-color: #2df18c;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-.risk-circle strong {
-    font-size: 25px;
-}
-
-.risk-circle span {
-    color: #2df18c;
-    font-size: 12px;
-}
-
-.checks {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    color: #a7bbb9;
-    font-size: 12px;
-}
-
-.checks span {
-    color: #2df18c;
-    margin-right: 6px;
-}
-
-/* FOOTER */
-
-.footer {
-    text-align: center;
-    color: #607976;
-    font-size: 11px;
-    padding: 18px;
-}
-
-/* RESPONSIVE */
-
-@media(max-width: 1000px) {
-    .status-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .main-grid,
-    .bottom-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media(max-width: 650px) {
-    .dashboard {
-        padding: 8px;
-    }
-
-    .header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-
-    .datetime {
-        text-align: left;
-    }
-
-    .status-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .node-content {
-        grid-template-columns: 1fr;
-    }
-
-    .sensor-image {
-        height: 100px;
-    }
-
-    .title {
-        font-size: 23px;
-    }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StrataGuard | Mine Monitoring System</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
 <body>
-
-<div class="dashboard">
-
-    <!-- HEADER -->
-    <header class="header">
-
-        <div class="logo-area">
-
-            <div class="logo">⛰</div>
-
-            <div>
-                <div class="title">
-                    MINE <span>GUARD</span>
-                </div>
-
-                <div class="subtitle">
-                    Smart Mine Subsidence Monitoring System
-                </div>
-            </div>
-
-        </div>
-
-        <div class="datetime">
-            <strong id="date">--</strong>
-            <span id="time">--:--:--</span>
-        </div>
-
-    </header>
-
-
-    <!-- STATUS CARDS -->
-
-    <section class="status-grid">
-
-        <div class="status-card">
-            <h3>Overall Ground Status</h3>
-            <div class="status-value" id="overallStatus">
-                NORMAL
-            </div>
-            <div class="status-small">
-                Current ground condition
-            </div>
-        </div>
-
-        <div class="status-card">
-            <h3>Active Nodes</h3>
-            <div class="status-value">
-                <span id="activeNodes">0</span> / 2
-            </div>
-            <div class="status-small">
-                Sensor nodes connected
-            </div>
-        </div>
-
-        <div class="status-card">
-            <h3>Network Status</h3>
-            <div class="status-value" id="networkStatus">
-                STABLE
-            </div>
-            <div class="status-small">
-                Node communication
-            </div>
-        </div>
-
-        <div class="status-card">
-            <h3>AI Analysis</h3>
-            <div class="status-value" id="aiStatus">
-                NORMAL
-            </div>
-            <div class="status-small">
-                Prototype analysis
-            </div>
-        </div>
-
-    </section>
-
-
-    <!-- MAIN -->
-
-    <section class="main-grid">
-
-        <!-- MAP -->
-
-        <div class="card map-card">
-
-            <div class="card-title">
-                Sensor Network Map
-            </div>
-
-            <div class="card-subtitle">
-                Live view of sensor nodes over mine area
-            </div>
-
-            <div class="map">
-
-                <div class="mine-area"></div>
-
-                <div class="mine-line line1"></div>
-                <div class="mine-line line2"></div>
-
-                <div class="mesh"></div>
-
-                <div class="node node1">
-                    <span class="node-label">N1</span>
-                </div>
-
-                <div class="node node2">
-                    <span class="node-label">N2</span>
-                </div>
-
-                <div class="map-info">
-                    🟢 Online Node<br>
-                    🔴 Offline Node<br>
-                    🟡 Alert Node<br>
-                    - - - Mesh Connection
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- NODE PANELS -->
-
-        <div class="nodes">
-
-            <!-- NODE 1 -->
-
-            <div class="card node-card">
-
-                <div class="node-header">
-
-                    <div class="node-name">
-                        Node 1
-                    </div>
-
-                    <div id="node1Connection" class="offline">
-                        OFFLINE
-                    </div>
-
-                </div>
-
-                <div class="node-content">
-
-                    <div class="sensor-image">
-
-                        <div class="sensor-signal off"
-                             id="signal1">◔</div>
-
-                        <div class="sensor-tower">
-
-                            <div class="sensor-panel"></div>
-                            <div class="sensor-box"></div>
-
-                        </div>
-
-                        <div class="sensor-ground"></div>
-
-                    </div>
-
-                    <div class="readings">
-
-                        <div class="reading">
-                            <span>Tilt X</span>
-                            <strong id="n1TiltX">—</strong>
-                            <span id="n1TiltXS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Tilt Y</span>
-                            <strong id="n1TiltY">—</strong>
-                            <span id="n1TiltYS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Vibration</span>
-                            <strong id="n1Vibration">—</strong>
-                            <span id="n1VibrationS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Displacement</span>
-                            <strong id="n1Displacement">—</strong>
-                            <span id="n1DisplacementS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Ground Status</span>
-                            <strong>—</strong>
-                            <span id="n1Overall" class="normal">N/A</span>
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-            <!-- NODE 2 -->
-
-            <div class="card node-card">
-
-                <div class="node-header">
-
-                    <div class="node-name">
-                        Node 2
-                    </div>
-
-                    <div id="node2Connection" class="offline">
-                        OFFLINE
-                    </div>
-
-                </div>
-
-                <div class="node-content">
-
-                    <div class="sensor-image">
-
-                        <div class="sensor-signal off"
-                             id="signal2">◔</div>
-
-                        <div class="sensor-tower">
-
-                            <div class="sensor-panel"></div>
-                            <div class="sensor-box"></div>
-
-                        </div>
-
-                        <div class="sensor-ground"></div>
-
-                    </div>
-
-                    <div class="readings">
-
-                        <div class="reading">
-                            <span>Tilt X</span>
-                            <strong id="n2TiltX">—</strong>
-                            <span id="n2TiltXS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Tilt Y</span>
-                            <strong id="n2TiltY">—</strong>
-                            <span id="n2TiltYS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Vibration</span>
-                            <strong id="n2Vibration">—</strong>
-                            <span id="n2VibrationS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Displacement</span>
-                            <strong id="n2Displacement">—</strong>
-                            <span id="n2DisplacementS" class="normal">N/A</span>
-                        </div>
-
-                        <div class="reading">
-                            <span>Ground Status</span>
-                            <strong>—</strong>
-                            <span id="n2Overall" class="normal">N/A</span>
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- BOTTOM -->
-
-    <section class="bottom-grid">
-
-        <!-- TREND -->
-
-        <div class="card chart">
-
-            <div class="card-title">
-                Parameter Trends
-                <span style="color:#718b88;font-size:12px;">
-                    (Live)
-                </span>
-            </div>
-
-            <div class="chart-area">
-
-                <div class="chart-line"
-                     id="lineTiltX"
-                     style="top:60px;"></div>
-
-                <div class="chart-line two"
-                     id="lineTiltY"></div>
-
-                <div class="chart-line three"
-                     id="lineVibration"></div>
-
-            </div>
-
-            <div class="legend">
-                <span>🔵 Tilt X</span>
-                <span>🟢 Tilt Y</span>
-                <span>🟡 Vibration</span>
-                <span>🔴 Displacement</span>
-            </div>
-
-        </div>
-
-
-        <!-- AI -->
-
-        <div class="card ai">
-
-            <div class="card-title">
-                AI Risk Assessment
-            </div>
-
-            <div class="ai-content">
-
-                <div class="risk-circle">
-                    <strong id="riskPercent">0%</strong>
-                    <span>LOW RISK</span>
-                </div>
-
-                <div class="checks">
-
-                    <div>
-                        <span>✓</span>
-                        Pattern Analysis
-                    </div>
-
-                    <div>
-                        <span>✓</span>
-                        Anomaly Detection
-                    </div>
-
-                    <div>
-                        <span>✓</span>
-                        Trend Prediction
-                    </div>
-
-                    <div>
-                        <span>✓</span>
-                        Risk Estimation
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <div class="footer">
-        MINE GUARD · Internal Prototype Dashboard
+<div class="app-shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-logo" src="{{ url_for('static', filename='images/strataguard-logo.png') }}" alt="StrataGuard">
+      <div>
+        <div class="brand-name">strata<span>guard</span></div>
+        <div class="brand-sub">MINE MONITORING SYSTEM</div>
+      </div>
     </div>
 
+    <nav class="nav">
+      <button type="button" class="nav-item active" data-section="dashboard">
+        <span class="nav-icon">⌂</span><span>Dashboard</span>
+      </button>
+      <button type="button" class="nav-item" data-section="history">
+        <span class="nav-icon">◷</span><span>History</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <span class="connection-dot" id="sidebarDot"></span>
+      <div>
+        <strong id="sidebarConnection">System Online</strong>
+        <small>ESP32 Network</small>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <header class="topbar">
+      <div></div>
+      <div class="top-actions">
+        <div class="system-pill">
+          <span class="live-dot" id="systemDot"></span>
+          <strong id="systemStatus">System Online</strong>
+          <span class="divider"></span>
+          <span class="pulse">⌁</span>
+        </div>
+        <div class="clock-card">
+          <strong id="clock">--:--:--</strong>
+          <span id="date">--</span>
+        </div>
+      </div>
+    </header>
+
+    <section id="dashboard" class="page-section">
+
+      <section class="site-status">
+        <div class="site-status-icon">⬟</div>
+        <div class="site-status-copy">
+          <h2>System Status</h2>
+          <p>Overall site condition based on node data</p>
+        </div>
+        <div class="site-badge normal" id="overallStatus">NORMAL</div>
+
+        <div class="site-divider"></div>
+
+        <div class="node-status-top">
+          <span class="radio-icon">◉</span>
+          <div>
+            <strong>Node 1 Status</strong>
+            <small id="node1TopText">All parameters within safe range</small>
+          </div>
+          <span class="small-badge normal" id="node1TopStatus">NORMAL</span>
+        </div>
+
+        <div class="site-divider"></div>
+
+        <div class="node-status-top">
+          <span class="radio-icon orange">◉</span>
+          <div>
+            <strong>Node 2 Status</strong>
+            <small id="node2TopText">All parameters within safe range</small>
+          </div>
+          <span class="small-badge normal" id="node2TopStatus">NORMAL</span>
+        </div>
+      </section>
+
+      <section class="map-card">
+        <div id="gisMap"></div>
+      </section>
+
+      <section class="nodes-grid">
+
+        <article class="node-panel" id="nodePanel1">
+          <div class="node-header">
+            <div class="node-title">
+              <span class="node-dot"></span>
+              <div>
+                <h2>Node 1</h2>
+                <span>Lat: 17.6599 &nbsp;|&nbsp; Lon: 75.9064</span>
+              </div>
+            </div>
+            <span class="online-pill" id="node1Active">Online</span>
+          </div>
+
+          <div class="node-metrics">
+            <div class="mini-card tilt-mini">
+              <div class="mini-label">△ Ground Tilt</div>
+              <strong id="n1Tilt">0.00°</strong>
+              <small>degrees</small>
+              <canvas id="n1TiltSpark"></canvas>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">⌁ Vibration (RMS)</div>
+              <strong id="n1Vibration">0.00</strong>
+              <small>g</small>
+              <canvas id="n1VibrationSpark"></canvas>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">↔ Node Distance</div>
+              <strong id="n1Distance">0.00</strong>
+              <small>mm</small>
+              <canvas id="n1DistanceSpark"></canvas>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">ϟ Crack Indicator</div>
+              <strong id="n1Crack">0.00</strong>
+              <small>index</small>
+              <canvas id="n1CrackSpark"></canvas>
+            </div>
+          </div>
+        </article>
+
+        <article class="node-panel" id="nodePanel2">
+          <div class="node-header">
+            <div class="node-title">
+              <span class="node-dot"></span>
+              <div>
+                <h2>Node 2</h2>
+                <span>Lat: 17.6612 &nbsp;|&nbsp; Lon: 75.9081</span>
+              </div>
+            </div>
+            <span class="online-pill" id="node2Active">Online</span>
+          </div>
+
+          <div class="node-metrics">
+            <div class="mini-card tilt-mini">
+              <div class="mini-label">△ Ground Tilt</div>
+              <strong id="n2Tilt">0.00°</strong>
+              <small>degrees</small>
+              <canvas id="n2TiltSpark"></canvas>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">⌁ Vibration (RMS)</div>
+              <strong id="n2Vibration">0.00</strong>
+              <small>g</small>
+              <canvas id="n2VibrationSpark"></canvas>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">↔ Node Distance</div>
+              <strong id="n2Distance">0.00</strong>
+              <small>mm</small>
+              <canvas id="n2DistanceSpark"></canvas>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">ϟ Crack Indicator</div>
+              <strong id="n2Crack">0.00</strong>
+              <small>index</small>
+              <canvas id="n2CrackSpark"></canvas>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <section class="analysis-grid">
+
+        <article class="chart-card large">
+          <div class="chart-head">
+            <div>
+              <span class="chart-icon">⌁</span>
+              <div>
+                <h3>Ground Condition Trends</h3>
+                <p>Real-time monitoring of ground tilt, node distance, vibration and crack initiation.</p>
+              </div>
+            </div>
+            <select id="trendRange">
+              <option value="30">Last 1 Hour</option>
+              <option value="15">Last 30 Minutes</option>
+              <option value="10">Last 15 Minutes</option>
+            </select>
+          </div>
+          <div class="legend">
+            <span><i class="dot pink"></i>Ground Tilt (°)</span>
+            <span><i class="dot cyan"></i>Node Distance (mm)</span>
+            <span><i class="dot orange"></i>Vibration (g)</span>
+            <span><i class="dot purple"></i>Crack Initiation (Index)</span>
+          </div>
+          <canvas id="trendChart" class="trend-chart"></canvas>
+        </article>
+
+        <article class="risk-card">
+          <div class="chart-head">
+            <div>
+              <span class="chart-icon">⬟</span>
+              <div>
+                <h3>Risk Analysis</h3>
+                <p>Live assessment based on ground conditions.</p>
+              </div>
+            </div>
+            <span class="site-badge normal" id="riskBadge">NORMAL</span>
+          </div>
+
+          <div class="gauge">
+            <div class="gauge-arc" id="riskGauge"></div>
+            <div class="gauge-center">
+              <span id="riskIcon">⌁</span>
+              <strong id="riskLabel">NORMAL</strong>
+            </div>
+          </div>
+
+          <h4 id="riskSummaryTitle">System condition is normal</h4>
+          <p id="riskSummaryText">No significant abnormal sensor condition detected.</p>
+
+          <div class="risk-values">
+            <div><span>Tilt</span><strong id="riskTiltValue">0.00°</strong></div>
+            <div><span>Distance</span><strong id="riskDistanceValue">0.00 mm</strong></div>
+            <div><span>Vibration</span><strong id="riskVibrationValue">0.00 g</strong></div>
+            <div><span>Crack</span><strong id="riskCrackValue">0.00</strong></div>
+          </div>
+        </article>
+
+      </section>
+
+    </section>
+
+    <section id="history" class="page-section hidden">
+
+      <section class="history-card">
+
+        <div class="history-head">
+          <div class="history-title">
+            <span class="chart-icon">◷</span>
+            <div>
+              <h2>History</h2>
+              <p>Latest sensor readings from both nodes</p>
+            </div>
+          </div>
+
+          <div class="history-controls">
+            <div class="date-control">
+              <span>▣</span>
+              <input type="date" id="historyDateFrom">
+              <span>→</span>
+              <input type="date" id="historyDateTo">
+            </div>
+
+            <select id="historyNodeFilter">
+              <option value="all">All Nodes</option>
+              <option value="1">Node 1</option>
+              <option value="2">Node 2</option>
+            </select>
+
+            <div class="search-control">
+              <span>⌕</span>
+              <input id="historySearch" type="search" placeholder="Search data...">
+            </div>
+
+            <button class="refresh-btn" id="refreshHistory">Refresh</button>
+          </div>
+        </div>
+
+        <div class="history-table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Node</th>
+                <th>Ground Tilt (°)</th>
+                <th>Vibration (g)</th>
+                <th>Node Distance (mm)</th>
+                <th>Crack Indicator (Index)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="7" class="history-empty">Loading latest readings...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="history-footer">
+          <span id="historyCount">0 records</span>
+          <div class="pagination" id="pagination"></div>
+          <select id="pageSize">
+            <option value="5">5 per page</option>
+            <option value="10" selected>10 per page</option>
+          </select>
+        </div>
+
+      </section>
+
+    </section>
+
+  </main>
 </div>
 
-
-<script>
-
-/* CLOCK */
-
-function updateClock() {
-
-    const now = new Date();
-
-    document.getElementById("date").textContent =
-        now.toLocaleDateString(
-            undefined,
-            {
-                weekday: "short",
-                day: "2-digit",
-                month: "short",
-                year: "numeric"
-            }
-        );
-
-    document.getElementById("time").textContent =
-        now.toLocaleTimeString();
-
-}
-
-setInterval(updateClock, 1000);
-updateClock();
-
-
-/* STATUS TEXT */
-
-function statusText(value) {
-
-    const status = Number(value);
-
-    if (status === 0) return "NORMAL";
-    if (status === 1) return "MEDIUM";
-    if (status === 2) return "HIGH";
-    if (status === 3) return "CRITICAL";
-
-    return "N/A";
-}
-
-
-/* STATUS CLASS */
-
-function statusClass(value) {
-
-    const status = Number(value);
-
-    if (status === 0) return "normal";
-    if (status === 1) return "medium";
-    if (status === 2) return "high";
-    if (status === 3) return "critical";
-
-    return "normal";
-}
-
-
-/* UPDATE READING */
-
-function setReading(
-    valueID,
-    statusID,
-    value,
-    unit,
-    status
-) {
-
-    const valueElement =
-        document.getElementById(valueID);
-
-    const statusElement =
-        document.getElementById(statusID);
-
-    if (value === undefined || value === null) {
-
-        valueElement.textContent = "—";
-        statusElement.textContent = "N/A";
-
-        return;
-    }
-
-    valueElement.textContent =
-        Number(value).toFixed(2) + unit;
-
-    statusElement.textContent =
-        statusText(status);
-
-    statusElement.className =
-        statusClass(status);
-
-}
-
-
-/* UPDATE NODE */
-
-function updateNode(
-    prefix,
-    node,
-    connected
-) {
-
-    const connection =
-        document.getElementById(
-            prefix + "Connection"
-        );
-
-    const signal =
-        document.getElementById(
-            prefix === "node1"
-                ? "signal1"
-                : "signal2"
-        );
-
-    if (!connected || !node) {
-
-        connection.textContent = "OFFLINE";
-        connection.className = "offline";
-
-        signal.classList.add("off");
-
-        return;
-    }
-
-    connection.textContent = "ONLINE";
-    connection.className = "online";
-
-    signal.classList.remove("off");
-
-    const n =
-        prefix === "node1" ? "n1" : "n2";
-
-    setReading(
-        n + "TiltX",
-        n + "TiltXS",
-        node.tiltX,
-        "°",
-        node.tiltStatus
-    );
-
-    setReading(
-        n + "TiltY",
-        n + "TiltYS",
-        node.tiltY,
-        "°",
-        node.tiltStatus
-    );
-
-    setReading(
-        n + "Vibration",
-        n + "VibrationS",
-        node.vibration,
-        " g",
-        node.vibrationStatus
-    );
-
-    setReading(
-        n + "Displacement",
-        n + "DisplacementS",
-        node.displacement,
-        " mm",
-        node.displacementStatus
-    );
-
-    const overall =
-        document.getElementById(n + "Overall");
-
-    overall.textContent =
-        statusText(node.overallStatus);
-
-    overall.className =
-        statusClass(node.overallStatus);
-
-}
-
-
-/* FETCH DATA */
-
-async function updateDashboard() {
-
-    try {
-
-        const response =
-            await fetch("/api/data");
-
-        const data =
-            await response.json();
-
-        const node1Connected =
-            data.node1Connected === true;
-
-        const node2Connected =
-            data.node2 &&
-            data.node2.connected === true;
-
-
-        /* NODE DATA */
-
-        updateNode(
-            "node1",
-            data.node1,
-            node1Connected
-        );
-
-        updateNode(
-            "node2",
-            data.node2,
-            node2Connected
-        );
-
-
-        /* ACTIVE NODES */
-
-        let active = 0;
-
-        if (node1Connected) active++;
-        if (node2Connected) active++;
-
-        document.getElementById(
-            "activeNodes"
-        ).textContent = active;
-
-
-        /* NETWORK */
-
-        document.getElementById(
-            "networkStatus"
-        ).textContent =
-            active > 0 ? "STABLE" : "OFFLINE";
-
-
-        /* OVERALL */
-
-        const systemStatus =
-            Number(data.systemStatus || 0);
-
-        document.getElementById(
-            "overallStatus"
-        ).textContent =
-            statusText(systemStatus);
-
-
-        document.getElementById(
-            "aiStatus"
-        ).textContent =
-            statusText(systemStatus);
-
-
-        /* SIMPLE RISK DISPLAY */
-
-        let risk = 0;
-
-        if (systemStatus === 1) risk = 30;
-        if (systemStatus === 2) risk = 65;
-        if (systemStatus === 3) risk = 90;
-
-        document.getElementById(
-            "riskPercent"
-        ).textContent = risk + "%";
-
-
-        /* TREND VISUAL */
-
-        if (node2Connected) {
-
-            const tilt =
-                Math.abs(Number(data.node2.tiltX || 0));
-
-            const vibration =
-                Number(data.node2.vibration || 0);
-
-            const tiltPosition =
-                Math.min(150, 30 + tilt * 20);
-
-            const vibrationPosition =
-                Math.min(150, 100 + vibration * 30);
-
-            document.getElementById(
-                "lineTiltX"
-            ).style.top =
-                tiltPosition + "px";
-
-            document.getElementById(
-                "lineVibration"
-            ).style.top =
-                vibrationPosition + "px";
-
-        }
-
-    }
-
-    catch(error) {
-
-        console.log(
-            "Dashboard connection error:",
-            error
-        );
-
-        document.getElementById(
-            "networkStatus"
-        ).textContent = "OFFLINE";
-
-    }
-
-}
-
-
-/* UPDATE EVERY SECOND */
-
-setInterval(
-    updateDashboard,
-    1000
-);
-
-updateDashboard();
-
-</script>
-
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

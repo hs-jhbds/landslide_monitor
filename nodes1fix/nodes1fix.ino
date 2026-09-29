@@ -1,16 +1,60 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 
 // =====================================================
-// NODE 1 - ESP32
-// MPU6050 + Vibration Sensor + Potentiometer
-// ESP-NOW -> NODE 2
+// NODE 2
+// ESP32
+//
+// Sensors:
+// MPU6050 + Vibration + Potentiometer
+//
+// Receives NODE 1 through ESP-NOW
+// Sends combined data to Linux PC through HTTP
 // =====================================================
 
-// -------------------- PINS --------------------
+
+// =====================================================
+// WIFI
+// =====================================================
+
+const char* WIFI_SSID =
+  "Anan";
+
+const char* WIFI_PASSWORD =
+  "12345678";
+
+
+// =====================================================
+// LINUX SERVER
+// =====================================================
+
+const char* SERVER_IP =
+  "10.43.88.185";
+
+const uint16_t SERVER_PORT =
+  5000;
+
+
+// Flask endpoint
+const char* SERVER_ENDPOINT =
+  "/api/data";
+
+
+// =====================================================
+// ESP-NOW CHANNEL
+// MUST MATCH NODE 1
+// =====================================================
+
+#define ESPNOW_CHANNEL 6
+
+
+// =====================================================
+// PINS
+// =====================================================
 
 #define SDA_PIN       21
 #define SCL_PIN       22
@@ -19,9 +63,12 @@
 #define POT_PIN       34
 
 
-// -------------------- MPU6050 --------------------
+// =====================================================
+// MPU6050
+// =====================================================
 
 #define MPU_ADDR          0x68
+
 #define PWR_MGMT_1        0x6B
 #define SMPLRT_DIV        0x19
 #define CONFIG_REG        0x1A
@@ -29,35 +76,6 @@
 #define ACCEL_CONFIG      0x1C
 #define ACCEL_XOUT_H      0x3B
 #define WHO_AM_I          0x75
-
-
-// =====================================================
-// IMPORTANT
-// NODE 2 IS CURRENTLY CONNECTED TO WI-FI CHANNEL 1
-// =====================================================
-
-#define ESPNOW_CHANNEL 1
-
-
-// =====================================================
-// NODE 2 MAC
-//
-// REPLACE THESE 6 BYTES WITH THE MAC PRINTED BY NODE 2
-//
-// Example:
-// NODE 2 MAC: 68:09:47:74:A3:94
-//
-// Then use:
-// =====================================================
-
-uint8_t node2MAC[] = {
-  0x68,
-  0x09,
-  0x47,
-  0x74,
-  0xA3,
-  0x94
-};
 
 
 // =====================================================
@@ -72,7 +90,7 @@ uint8_t node2MAC[] = {
 
 // =====================================================
 // DATA PACKET
-// MUST BE IDENTICAL TO NODE 2
+// MUST BE IDENTICAL TO NODE 1
 // =====================================================
 
 typedef struct SensorData {
@@ -95,7 +113,31 @@ typedef struct SensorData {
 } SensorData;
 
 
+// =====================================================
+// NODE DATA
+// =====================================================
+
 SensorData node1Data;
+SensorData node2Data;
+
+
+// =====================================================
+// NODE 1 CONNECTION
+// =====================================================
+
+volatile bool node1DataReceived =
+  false;
+
+unsigned long lastNode1Packet =
+  0;
+
+const unsigned long NODE1_TIMEOUT =
+  5000;
+
+// Send to Flask every 2 seconds instead of opening a new TCP
+// connection every loop iteration.
+unsigned long lastServerSend = 0;
+const unsigned long SERVER_SEND_INTERVAL = 2000;
 
 
 // =====================================================
@@ -107,7 +149,7 @@ float baselineTiltY = 0.0;
 
 
 // =====================================================
-// MPU WRITE
+// MPU FUNCTIONS
 // =====================================================
 
 void writeMPU(
@@ -122,27 +164,13 @@ void writeMPU(
   Wire.write(reg);
   Wire.write(value);
 
-  uint8_t result =
-    Wire.endTransmission();
-
-  if (result != 0) {
-
-    Serial.print(
-      "MPU write error: "
-    );
-
-    Serial.println(result);
-  }
+  Wire.endTransmission();
 }
 
 
-// =====================================================
-// MPU READ
-// =====================================================
-
 bool readMPU(
   uint8_t reg,
-  uint8_t *buffer,
+  uint8_t* buffer,
   uint8_t length
 ) {
 
@@ -160,7 +188,6 @@ bool readMPU(
     return false;
   }
 
-
   uint8_t received =
     Wire.requestFrom(
       MPU_ADDR,
@@ -168,14 +195,9 @@ bool readMPU(
       true
     );
 
-
-  if (
-    received != length
-  ) {
-
+  if (received != length) {
     return false;
   }
-
 
   for (
     uint8_t i = 0;
@@ -187,19 +209,13 @@ bool readMPU(
       Wire.read();
   }
 
-
   return true;
 }
 
 
-// =====================================================
-// MPU INITIALIZATION
-// =====================================================
-
 bool initMPU() {
 
-  uint8_t whoAmI = 0;
-
+  uint8_t whoAmI;
 
   if (
     !readMPU(
@@ -216,7 +232,6 @@ bool initMPU() {
     return false;
   }
 
-
   Serial.print(
     "MPU6050 WHO_AM_I = 0x"
   );
@@ -226,7 +241,6 @@ bool initMPU() {
     HEX
   );
 
-
   writeMPU(
     PWR_MGMT_1,
     0x00
@@ -234,38 +248,33 @@ bool initMPU() {
 
   delay(100);
 
-
   writeMPU(
     SMPLRT_DIV,
     0x07
   );
-
 
   writeMPU(
     CONFIG_REG,
     0x03
   );
 
-
+  // ±500 deg/s
   writeMPU(
     GYRO_CONFIG,
     0x08
   );
 
-
+  // ±8g
   writeMPU(
     ACCEL_CONFIG,
     0x10
   );
 
-
   delay(100);
-
 
   Serial.println(
     "MPU6050 initialized."
   );
-
 
   return true;
 }
@@ -286,7 +295,6 @@ bool readSensors(
 
   uint8_t buffer[14];
 
-
   if (
     !readMPU(
       ACCEL_XOUT_H,
@@ -298,67 +306,44 @@ bool readSensors(
     return false;
   }
 
-
   int16_t rawAx =
     ((int16_t)buffer[0] << 8)
     | buffer[1];
-
 
   int16_t rawAy =
     ((int16_t)buffer[2] << 8)
     | buffer[3];
 
-
   int16_t rawAz =
     ((int16_t)buffer[4] << 8)
     | buffer[5];
-
 
   int16_t rawGx =
     ((int16_t)buffer[8] << 8)
     | buffer[9];
 
-
   int16_t rawGy =
     ((int16_t)buffer[10] << 8)
     | buffer[11];
-
 
   int16_t rawGz =
     ((int16_t)buffer[12] << 8)
     | buffer[13];
 
+  ax = rawAx / 4096.0;
+  ay = rawAy / 4096.0;
+  az = rawAz / 4096.0;
 
-  // ±8g
-
-  ax =
-    rawAx / 4096.0;
-
-  ay =
-    rawAy / 4096.0;
-
-  az =
-    rawAz / 4096.0;
-
-
-  // ±500 deg/s
-
-  gx =
-    rawGx / 65.5;
-
-  gy =
-    rawGy / 65.5;
-
-  gz =
-    rawGz / 65.5;
-
+  gx = rawGx / 65.5;
+  gy = rawGy / 65.5;
+  gz = rawGz / 65.5;
 
   return true;
 }
 
 
 // =====================================================
-// CALCULATE TILT
+// TILT
 // =====================================================
 
 void calculateTilt(
@@ -376,9 +361,7 @@ void calculateTilt(
         (ax * ax) +
         (az * az)
       )
-    )
-    * 180.0 / PI;
-
+    ) * 180.0 / PI;
 
   tiltY =
     atan2(
@@ -387,8 +370,7 @@ void calculateTilt(
         (ay * ay) +
         (az * az)
       )
-    )
-    * 180.0 / PI;
+    ) * 180.0 / PI;
 }
 
 
@@ -407,26 +389,18 @@ uint8_t getTiltStatus(
       abs(tiltY)
     );
 
-
   if (tilt < 3.0)
     return NORMAL;
-
 
   if (tilt < 7.0)
     return MEDIUM;
 
-
   if (tilt < 12.0)
     return HIGH;
-
 
   return CRITICAL;
 }
 
-
-// =====================================================
-// VIBRATION STATUS
-// =====================================================
 
 uint8_t getVibrationStatus(
   float vibration
@@ -435,22 +409,15 @@ uint8_t getVibrationStatus(
   if (vibration < 0.10)
     return NORMAL;
 
-
   if (vibration < 0.25)
     return MEDIUM;
-
 
   if (vibration < 0.50)
     return HIGH;
 
-
   return CRITICAL;
 }
 
-
-// =====================================================
-// DISPLACEMENT STATUS
-// =====================================================
 
 uint8_t getDisplacementStatus(
   float displacement
@@ -459,22 +426,15 @@ uint8_t getDisplacementStatus(
   if (displacement < 2.0)
     return NORMAL;
 
-
   if (displacement < 5.0)
     return MEDIUM;
-
 
   if (displacement < 10.0)
     return HIGH;
 
-
   return CRITICAL;
 }
 
-
-// =====================================================
-// OVERALL STATUS
-// =====================================================
 
 uint8_t getOverallStatus(
   uint8_t tiltStatus,
@@ -491,10 +451,6 @@ uint8_t getOverallStatus(
   );
 }
 
-
-// =====================================================
-// STATUS TEXT
-// =====================================================
 
 const char* statusText(
   uint8_t status
@@ -521,87 +477,42 @@ const char* statusText(
 
 
 // =====================================================
-// ESP-NOW SEND CALLBACK
+// ESP-NOW RECEIVE CALLBACK
 // =====================================================
 
-void onDataSent(
-  const wifi_tx_info_t *info,
-  esp_now_send_status_t status
+void onDataRecv(
+  const esp_now_recv_info_t *info,
+  const uint8_t *incomingData,
+  int len
 ) {
 
   if (
-    status ==
-    ESP_NOW_SEND_SUCCESS
+    len == sizeof(SensorData)
   ) {
 
-    Serial.println(
-      "ESP-NOW: DATA SENT SUCCESSFULLY"
+    SensorData received;
+
+    memcpy(
+      &received,
+      incomingData,
+      sizeof(SensorData)
     );
 
-  } else {
+    if (received.nodeID == 1) {
 
-    Serial.println(
-      "ESP-NOW: SEND FAILED"
-    );
+      memcpy(
+        &node1Data,
+        &received,
+        sizeof(SensorData)
+      );
+
+      node1DataReceived =
+        true;
+
+      lastNode1Packet =
+        millis();
+    }
   }
-}
-
-
-// =====================================================
-// PRINT MAC
-// =====================================================
-
-void printMAC() {
-
-  uint8_t mac[6];
-
-
-  esp_err_t result =
-    esp_wifi_get_mac(
-      WIFI_IF_STA,
-      mac
-    );
-
-
-  if (
-    result != ESP_OK
-  ) {
-
-    Serial.println(
-      "Could not read MAC."
-    );
-
-    return;
-  }
-
-
-  Serial.printf(
-    "NODE 1 MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-    mac[0],
-    mac[1],
-    mac[2],
-    mac[3],
-    mac[4],
-    mac[5]
-  );
-}
-
-
-// =====================================================
-// PRINT NODE 2 MAC
-// =====================================================
-
-void printNode2MAC() {
-
-  Serial.printf(
-    "NODE 2 TARGET MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-    node2MAC[0],
-    node2MAC[1],
-    node2MAC[2],
-    node2MAC[3],
-    node2MAC[4],
-    node2MAC[5]
-  );
 }
 
 
@@ -609,7 +520,7 @@ void printNode2MAC() {
 // SET CHANNEL
 // =====================================================
 
-bool setESPNowChannel() {
+void setESPNowChannel() {
 
   esp_err_t result =
     esp_wifi_set_channel(
@@ -617,33 +528,132 @@ bool setESPNowChannel() {
       WIFI_SECOND_CHAN_NONE
     );
 
+  if (result == ESP_OK) {
 
-  if (
-    result != ESP_OK
-  ) {
+    Serial.print(
+      "ESP-NOW Channel: "
+    );
+
+    Serial.println(
+      ESPNOW_CHANNEL
+    );
+
+  } else {
 
     Serial.print(
       "Channel setup failed: "
     );
 
-    Serial.println(
-      result
-    );
+    Serial.println(result);
+  }
+}
 
-    return false;
+
+// =====================================================
+// WIFI CONNECTION
+// =====================================================
+
+void connectWiFi() {
+
+  Serial.println();
+  Serial.println(
+    "Connecting to Wi-Fi..."
+  );
+
+  WiFi.setSleep(false);
+  WiFi.begin(
+    WIFI_SSID,
+    WIFI_PASSWORD
+  );
+
+  int attempts = 0;
+
+  // Initial connection only. Do not lock the ESP32 forever.
+  while (
+    WiFi.status() != WL_CONNECTED
+    &&
+    attempts < 20
+  ) {
+
+    delay(500);
+
+    Serial.print(".");
+
+    attempts++;
   }
 
+  Serial.println();
 
-  Serial.print(
-    "ESP-NOW Channel: "
-  );
+  if (
+    WiFi.status()
+    == WL_CONNECTED
+  ) {
 
+    Serial.println(
+      "Wi-Fi connected."
+    );
+
+    Serial.print(
+      "Node 2 IP: "
+    );
+
+    Serial.println(
+      WiFi.localIP()
+    );
+
+    Serial.print(
+      "Wi-Fi channel: "
+    );
+
+    Serial.println(
+      WiFi.channel()
+    );
+
+  } else {
+
+    Serial.println(
+      "Wi-Fi not connected yet. Continuing..."
+    );
+
+    Serial.println(
+      "Node 2 will retry automatically."
+    );
+  }
+}
+
+
+// =====================================================
+// WIFI RECONNECT
+// =====================================================
+
+void maintainWiFi() {
+
+  static unsigned long lastReconnectAttempt = 0;
+
+  if (WiFi.status() == WL_CONNECTED) {
+    return;
+  }
+
+  if (
+    millis() - lastReconnectAttempt < 5000
+  ) {
+    return;
+  }
+
+  lastReconnectAttempt = millis();
+
+  Serial.println();
   Serial.println(
-    ESPNOW_CHANNEL
+    "Wi-Fi disconnected. Reconnecting..."
   );
 
+  WiFi.disconnect(false, false);
+  delay(100);
 
-  return true;
+  WiFi.begin(
+    WIFI_SSID,
+    WIFI_PASSWORD
+  );
 }
 
 
@@ -659,29 +669,25 @@ void calibrateTilt() {
   );
 
   Serial.println(
-    "TILT CALIBRATION"
+    "NODE 2 TILT CALIBRATION"
   );
 
   Serial.println(
-    "Keep NODE 1 completely still"
+    "Keep NODE 2 completely still"
   );
 
   Serial.println(
     "================================"
   );
 
-
   delay(2000);
-
 
   float sumX = 0;
   float sumY = 0;
 
-
   const int samples = 100;
 
   int validSamples = 0;
-
 
   for (
     int i = 0;
@@ -691,7 +697,6 @@ void calibrateTilt() {
 
     float ax, ay, az;
     float gx, gy, gz;
-
 
     if (
       readSensors(
@@ -707,7 +712,6 @@ void calibrateTilt() {
       float tx;
       float ty;
 
-
       calculateTilt(
         ax,
         ay,
@@ -716,33 +720,23 @@ void calibrateTilt() {
         ty
       );
 
-
       sumX += tx;
       sumY += ty;
-
 
       validSamples++;
     }
 
-
     delay(10);
   }
 
-
-  if (
-    validSamples > 0
-  ) {
+  if (validSamples > 0) {
 
     baselineTiltX =
-      sumX /
-      validSamples;
-
+      sumX / validSamples;
 
     baselineTiltY =
-      sumY /
-      validSamples;
+      sumY / validSamples;
   }
-
 
   Serial.print(
     "Baseline Tilt X: "
@@ -753,7 +747,6 @@ void calibrateTilt() {
     2
   );
 
-
   Serial.print(
     "Baseline Tilt Y: "
   );
@@ -763,12 +756,290 @@ void calibrateTilt() {
     2
   );
 
-
   Serial.println(
     "Calibration complete."
   );
+}
 
-  Serial.println();
+
+// =====================================================
+// JSON CREATION
+// =====================================================
+
+String createJSON() {
+
+  bool node1Connected =
+    node1DataReceived &&
+    (
+      millis() - lastNode1Packet
+      < NODE1_TIMEOUT
+    );
+
+  String json = "{";
+
+  // ---------------- NODE 1 ----------------
+
+  json += "\"node1\":{";
+
+  json += "\"connected\":";
+  json += node1Connected
+    ? "true"
+    : "false";
+
+  json += ",";
+
+  json += "\"tiltX\":";
+  json += String(
+    node1Data.tiltX,
+    2
+  );
+
+  json += ",";
+
+  json += "\"tiltY\":";
+  json += String(
+    node1Data.tiltY,
+    2
+  );
+
+  json += ",";
+
+  json += "\"vibration\":";
+  json += String(
+    node1Data.vibration,
+    3
+  );
+
+  json += ",";
+
+  json += "\"displacement\":";
+  json += String(
+    node1Data.displacement,
+    2
+  );
+
+  json += ",";
+
+  json += "\"vibrationDetected\":";
+  json += String(
+    node1Data.vibrationDetected
+  );
+
+  json += ",";
+
+  json += "\"tiltStatus\":";
+  json += String(
+    node1Data.tiltStatus
+  );
+
+  json += ",";
+
+  json += "\"vibrationStatus\":";
+  json += String(
+    node1Data.vibrationStatus
+  );
+
+  json += ",";
+
+  json += "\"displacementStatus\":";
+  json += String(
+    node1Data.displacementStatus
+  );
+
+  json += ",";
+
+  json += "\"overallStatus\":";
+  json += String(
+    node1Data.overallStatus
+  );
+
+  json += "},";
+
+
+  // ---------------- NODE 2 ----------------
+
+  json += "\"node2\":{";
+
+  json += "\"connected\":true,";
+
+  json += "\"tiltX\":";
+  json += String(
+    node2Data.tiltX,
+    2
+  );
+
+  json += ",";
+
+  json += "\"tiltY\":";
+  json += String(
+    node2Data.tiltY,
+    2
+  );
+
+  json += ",";
+
+  json += "\"vibration\":";
+  json += String(
+    node2Data.vibration,
+    3
+  );
+
+  json += ",";
+
+  json += "\"displacement\":";
+  json += String(
+    node2Data.displacement,
+    2
+  );
+
+  json += ",";
+
+  json += "\"vibrationDetected\":";
+  json += String(
+    node2Data.vibrationDetected
+  );
+
+  json += ",";
+
+  json += "\"tiltStatus\":";
+  json += String(
+    node2Data.tiltStatus
+  );
+
+  json += ",";
+
+  json += "\"vibrationStatus\":";
+  json += String(
+    node2Data.vibrationStatus
+  );
+
+  json += ",";
+
+  json += "\"displacementStatus\":";
+  json += String(
+    node2Data.displacementStatus
+  );
+
+  json += ",";
+
+  json += "\"overallStatus\":";
+  json += String(
+    node2Data.overallStatus
+  );
+
+  json += "},";
+
+
+  // ---------------- SYSTEM ----------------
+
+  uint8_t systemStatus =
+    node2Data.overallStatus;
+
+  if (node1Connected) {
+
+    systemStatus =
+      max(
+        node1Data.overallStatus,
+        node2Data.overallStatus
+      );
+  }
+
+  json += "\"systemStatus\":";
+  json += String(systemStatus);
+
+  json += ",";
+
+  json += "\"node1Connected\":";
+  json += node1Connected
+    ? "true"
+    : "false";
+
+  json += "}";
+
+  return json;
+}
+
+
+// =====================================================
+// SEND HTTP TO LINUX
+// =====================================================
+
+void sendToServer() {
+
+  // Do not send every loop. This gives Wi-Fi/Flask time to
+  // close and reopen TCP connections cleanly.
+  if (millis() - lastServerSend < SERVER_SEND_INTERVAL) {
+    return;
+  }
+
+  lastServerSend = millis();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("HTTP skipped: Wi-Fi disconnected.");
+    return;
+  }
+
+  String url =
+    "http://" +
+    String(SERVER_IP) +
+    ":" +
+    String(SERVER_PORT) +
+    String(SERVER_ENDPOINT);
+
+  String json = createJSON();
+
+  // Try at most twice. A single TCP failure (-1) should not
+  // be treated as a permanent failure.
+  for (int attempt = 1; attempt <= 2; attempt++) {
+
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("HTTP aborted: Wi-Fi disconnected.");
+      return;
+    }
+
+    HTTPClient http;
+
+    http.setConnectTimeout(2000);
+    http.setTimeout(2500);
+    http.useHTTP10(true);
+
+    if (!http.begin(url)) {
+      Serial.println("HTTP begin failed.");
+      http.end();
+      return;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "close");
+
+    int httpCode = http.POST(json);
+
+    Serial.println();
+    Serial.println("========== HTTP ==========");
+    Serial.print("Attempt: ");
+    Serial.println(attempt);
+    Serial.print("HTTP Code: ");
+    Serial.println(httpCode);
+
+    if (httpCode > 0) {
+      String response = http.getString();
+      Serial.print("Server: ");
+      Serial.println(response);
+      http.end();
+      return;
+    }
+
+    // -1 is a TCP connection failure. Give the stack a short
+    // recovery period, then try once more.
+    Serial.print("HTTP error: ");
+    Serial.println(http.errorToString(httpCode));
+
+    http.end();
+
+    if (attempt == 1) {
+      delay(150);
+    }
+  }
 }
 
 
@@ -782,25 +1053,20 @@ void setup() {
 
   delay(1000);
 
-
   Serial.println();
-
   Serial.println(
     "========================================"
   );
 
   Serial.println(
-    "        NODE 1 - ESP32"
+    "        NODE 2 - ESP32"
   );
 
   Serial.println(
     "========================================"
   );
 
-
-  // --------------------
-  // PINS
-  // --------------------
+  // ---------------- PINS ----------------
 
   pinMode(
     VIBRATION_PIN,
@@ -812,10 +1078,7 @@ void setup() {
     INPUT
   );
 
-
-  // --------------------
-  // I2C
-  // --------------------
+  // ---------------- I2C ----------------
 
   Wire.begin(
     SDA_PIN,
@@ -824,66 +1087,55 @@ void setup() {
 
   Wire.setClock(400000);
 
+  // ---------------- MPU ----------------
 
-  // --------------------
-  // MPU
-  // --------------------
+  if (!initMPU()) {
 
-  if (
-    !initMPU()
-  ) {
+    Serial.println(
+      "ERROR: MPU6050 initialization failed."
+    );
 
     while (true) {
       delay(1000);
     }
   }
 
+  // ---------------- MAC ----------------
 
-  // --------------------
-  // WIFI STA
-  // --------------------
+  WiFi.mode(WIFI_STA);
 
-  WiFi.mode(
-    WIFI_STA
+  Serial.print(
+    "NODE 2 MAC: "
   );
 
-  delay(100);
+  Serial.println(
+    WiFi.macAddress()
+  );
 
+  // ---------------- WIFI ----------------
 
-  printMAC();
+  connectWiFi();
 
+  // ---------------- CHANNEL ----------------
 
-  // --------------------
-  // TARGET
-  // --------------------
+  setESPNowChannel();
 
-  printNode2MAC();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("Router Wi-Fi channel: ");
+    Serial.println(WiFi.channel());
 
-
-  // --------------------
-  // CHANNEL
-  // --------------------
-
-  if (
-    !setESPNowChannel()
-  ) {
-
-    while (true) {
-      delay(1000);
+    if (WiFi.channel() != ESPNOW_CHANNEL) {
+      Serial.println("WARNING: Router channel does not match ESP-NOW channel.");
+      Serial.print("Expected channel: ");
+      Serial.println(ESPNOW_CHANNEL);
     }
   }
 
-
-  // --------------------
-  // CALIBRATION
-  // --------------------
+  // ---------------- CALIBRATION ----------------
 
   calibrateTilt();
 
-
-  // --------------------
-  // ESP-NOW
-  // --------------------
+  // ---------------- ESP-NOW ----------------
 
   if (
     esp_now_init()
@@ -899,75 +1151,17 @@ void setup() {
     }
   }
 
-
-  Serial.println(
-    "ESP-NOW initialized."
+  esp_now_register_recv_cb(
+    onDataRecv
   );
-
-
-  esp_now_register_send_cb(
-    onDataSent
-  );
-
-
-  // --------------------
-  // PEER
-  // --------------------
-
-  esp_now_peer_info_t peerInfo = {};
-
-
-  memcpy(
-    peerInfo.peer_addr,
-    node2MAC,
-    6
-  );
-
-
-  peerInfo.channel =
-    ESPNOW_CHANNEL;
-
-
-  peerInfo.encrypt =
-    false;
-
-
-  if (
-    esp_now_add_peer(
-      &peerInfo
-    )
-    != ESP_OK
-  ) {
-
-    Serial.println(
-      "ERROR: Failed to add Node 2."
-    );
-
-    while (true) {
-      delay(1000);
-    }
-  }
-
 
   Serial.println();
   Serial.println(
-    "========================================"
+    "NODE 2 READY."
   );
 
   Serial.println(
-    "NODE 1 READY"
-  );
-
-  Serial.println(
-    "========================================"
-  );
-
-  Serial.print(
-    "ESP-NOW Channel: "
-  );
-
-  Serial.println(
-    ESPNOW_CHANNEL
+    "Waiting for NODE 1..."
   );
 
   Serial.println();
@@ -980,12 +1174,21 @@ void setup() {
 
 void loop() {
 
+  // ===================================================
+  // KEEP WIFI ALIVE
+  // ===================================================
+
+  maintainWiFi();
+
+  // ===================================================
+  // READ NODE 2 SENSORS
+  // ===================================================
+
   float ax, ay, az;
   float gx, gy, gz;
 
-
   if (
-    !readSensors(
+    readSensors(
       ax,
       ay,
       az,
@@ -995,300 +1198,259 @@ void loop() {
     )
   ) {
 
-    Serial.println(
-      "ERROR: MPU6050 read failed."
+    // ---------------- TILT ----------------
+
+    float rawTiltX;
+    float rawTiltY;
+
+    calculateTilt(
+      ax,
+      ay,
+      az,
+      rawTiltX,
+      rawTiltY
     );
 
-    delay(1000);
+    float tiltX =
+      rawTiltX -
+      baselineTiltX;
 
-    return;
+    float tiltY =
+      rawTiltY -
+      baselineTiltY;
+
+    // ---------------- VIBRATION ----------------
+
+    float accelerationMagnitude =
+      sqrt(
+        (ax * ax) +
+        (ay * ay) +
+        (az * az)
+      );
+
+    float vibration =
+      abs(
+        accelerationMagnitude - 1.0
+      );
+
+    uint8_t vibrationDetected =
+      digitalRead(
+        VIBRATION_PIN
+      );
+
+    // ---------------- DISPLACEMENT ----------------
+
+    int potValue =
+      analogRead(POT_PIN);
+
+    float displacement =
+      ((float)potValue / 4095.0)
+      * 20.0;
+
+    // ---------------- STATUS ----------------
+
+    uint8_t tiltStatus =
+      getTiltStatus(
+        tiltX,
+        tiltY
+      );
+
+    uint8_t vibrationStatus =
+      getVibrationStatus(
+        vibration
+      );
+
+    uint8_t displacementStatus =
+      getDisplacementStatus(
+        displacement
+      );
+
+    uint8_t overallStatus =
+      getOverallStatus(
+        tiltStatus,
+        vibrationStatus,
+        displacementStatus
+      );
+
+    // ---------------- STORE NODE 2 ----------------
+
+    node2Data.nodeID = 2;
+
+    node2Data.tiltX =
+      tiltX;
+
+    node2Data.tiltY =
+      tiltY;
+
+    node2Data.vibration =
+      vibration;
+
+    node2Data.displacement =
+      displacement;
+
+    node2Data.vibrationDetected =
+      vibrationDetected;
+
+    node2Data.tiltStatus =
+      tiltStatus;
+
+    node2Data.vibrationStatus =
+      vibrationStatus;
+
+    node2Data.displacementStatus =
+      displacementStatus;
+
+    node2Data.overallStatus =
+      overallStatus;
   }
 
 
   // ===================================================
-  // TILT
-  // ===================================================
-
-  float rawTiltX;
-  float rawTiltY;
-
-
-  calculateTilt(
-    ax,
-    ay,
-    az,
-    rawTiltX,
-    rawTiltY
-  );
-
-
-  float tiltX =
-    rawTiltX -
-    baselineTiltX;
-
-
-  float tiltY =
-    rawTiltY -
-    baselineTiltY;
-
-
-  // ===================================================
-  // VIBRATION
-  // ===================================================
-
-  float accelerationMagnitude =
-    sqrt(
-      (ax * ax) +
-      (ay * ay) +
-      (az * az)
-    );
-
-
-  float vibration =
-    abs(
-      accelerationMagnitude -
-      1.0
-    );
-
-
-  uint8_t vibrationDetected =
-    digitalRead(
-      VIBRATION_PIN
-    );
-
-
-  // ===================================================
-  // DISPLACEMENT
-  // ===================================================
-
-  int potValue =
-    analogRead(
-      POT_PIN
-    );
-
-
-  float displacement =
-    (
-      (float)potValue /
-      4095.0
-    )
-    * 20.0;
-
-
-  // ===================================================
-  // STATUS
-  // ===================================================
-
-  uint8_t tiltStatus =
-    getTiltStatus(
-      tiltX,
-      tiltY
-    );
-
-
-  uint8_t vibrationStatus =
-    getVibrationStatus(
-      vibration
-    );
-
-
-  uint8_t displacementStatus =
-    getDisplacementStatus(
-      displacement
-    );
-
-
-  uint8_t overallStatus =
-    getOverallStatus(
-      tiltStatus,
-      vibrationStatus,
-      displacementStatus
-    );
-
-
-  // ===================================================
-  // PACKET
-  // ===================================================
-
-  node1Data.nodeID =
-    1;
-
-
-  node1Data.tiltX =
-    tiltX;
-
-
-  node1Data.tiltY =
-    tiltY;
-
-
-  node1Data.vibration =
-    vibration;
-
-
-  node1Data.displacement =
-    displacement;
-
-
-  node1Data.vibrationDetected =
-    vibrationDetected;
-
-
-  node1Data.tiltStatus =
-    tiltStatus;
-
-
-  node1Data.vibrationStatus =
-    vibrationStatus;
-
-
-  node1Data.displacementStatus =
-    displacementStatus;
-
-
-  node1Data.overallStatus =
-    overallStatus;
-
-
-  // ===================================================
-  // DISPLAY
+  // SERIAL MONITOR
   // ===================================================
 
   Serial.println();
   Serial.println(
-    "========== NODE 1 =========="
+    "========================================"
   );
 
+  Serial.println(
+    "             NODE 2 DATA"
+  );
+
+  Serial.println(
+    "========================================"
+  );
+
+  // ---------------- NODE 1 ----------------
+
+  bool node1Connected =
+    node1DataReceived &&
+    (
+      millis() -
+      lastNode1Packet
+      < NODE1_TIMEOUT
+    );
+
+  if (node1Connected) {
+
+    Serial.println(
+      "NODE 1: CONNECTED"
+    );
+
+    Serial.print(
+      "Tilt X: "
+    );
+
+    Serial.println(
+      node1Data.tiltX,
+      2
+    );
+
+    Serial.print(
+      "Tilt Y: "
+    );
+
+    Serial.println(
+      node1Data.tiltY,
+      2
+    );
+
+    Serial.print(
+      "Vibration: "
+    );
+
+    Serial.println(
+      node1Data.vibration,
+      3
+    );
+
+    Serial.print(
+      "Displacement: "
+    );
+
+    Serial.println(
+      node1Data.displacement,
+      2
+    );
+
+    Serial.print(
+      "Overall: "
+    );
+
+    Serial.println(
+      statusText(
+        node1Data.overallStatus
+      )
+    );
+
+  } else {
+
+    Serial.println(
+      "NODE 1: WAITING"
+    );
+  }
+
+
+  // ---------------- NODE 2 ----------------
+
+  Serial.println();
+  Serial.println(
+    "NODE 2: ACTIVE"
+  );
 
   Serial.print(
     "Tilt X: "
   );
 
-  Serial.print(
-    tiltX,
+  Serial.println(
+    node2Data.tiltX,
     2
   );
-
-  Serial.println(
-    " deg"
-  );
-
 
   Serial.print(
     "Tilt Y: "
   );
 
-  Serial.print(
-    tiltY,
+  Serial.println(
+    node2Data.tiltY,
     2
   );
-
-  Serial.println(
-    " deg"
-  );
-
 
   Serial.print(
     "Vibration: "
   );
 
-  Serial.print(
-    vibration,
+  Serial.println(
+    node2Data.vibration,
     3
   );
-
-  Serial.println(
-    " g"
-  );
-
 
   Serial.print(
     "Displacement: "
   );
 
-  Serial.print(
-    displacement,
+  Serial.println(
+    node2Data.displacement,
     2
   );
 
-  Serial.println(
-    " mm"
-  );
-
-
   Serial.print(
-    "Tilt Status: "
+    "Overall: "
   );
 
   Serial.println(
     statusText(
-      tiltStatus
-    )
-  );
-
-
-  Serial.print(
-    "Vibration Status: "
-  );
-
-  Serial.println(
-    statusText(
-      vibrationStatus
-    )
-  );
-
-
-  Serial.print(
-    "Displacement Status: "
-  );
-
-  Serial.println(
-    statusText(
-      displacementStatus
-    )
-  );
-
-
-  Serial.print(
-    "Overall Status: "
-  );
-
-  Serial.println(
-    statusText(
-      overallStatus
+      node2Data.overallStatus
     )
   );
 
 
   // ===================================================
-  // ESP-NOW SEND
+  // SEND COMBINED DATA TO LINUX
   // ===================================================
 
-  Serial.println(
-    "Sending to NODE 2..."
-  );
-
-
-  esp_err_t result =
-    esp_now_send(
-      node2MAC,
-      (uint8_t *)&node1Data,
-      sizeof(node1Data)
-    );
-
-
-  if (
-    result != ESP_OK
-  ) {
-
-    Serial.print(
-      "ESP-NOW send error: "
-    );
-
-    Serial.println(
-      result
-    );
-  }
+  sendToServer();
 
 
   delay(1000);
